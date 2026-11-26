@@ -1,31 +1,79 @@
-// --- 1. Data Management (Cloud + Local) ---
-const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxZd2NNFqgEvt-InnoQyVwvMRIAcamML-TFvkWx3S7AQKs1iKkhhFXsm39bX5nUB74DZA/exec';
+// --- 1. Data Management (Firebase Realtime Database + Local) ---
+const FIREBASE_DB_URL = 'https://md-app1-default-rtdb.firebaseio.com';
+const CUSTOMERS_NODE_URL = `${FIREBASE_DB_URL}/customers.json`;
+const ROOT_DB_URL = `${FIREBASE_DB_URL}/.json`;
 
 let customers = JSON.parse(localStorage.getItem('mtd_customers')) || [];
 let lastId = parseInt(localStorage.getItem('mtd_last_id')) || 0;
 
+function normalizeCustomersArray(rawData) {
+    let list = [];
+    if (Array.isArray(rawData)) {
+        list = rawData.filter(item => item && typeof item === 'object');
+    } else if (rawData && typeof rawData === 'object') {
+        if (Array.isArray(rawData.customers)) {
+            list = rawData.customers.filter(item => item && typeof item === 'object');
+        } else {
+            list = Object.values(rawData).filter(item => item && typeof item === 'object');
+        }
+    }
+
+    return list.map(c => ({
+        ...c,
+        id: String(c.id || '').padStart(5, '0'),
+        meals: {
+            chicken: parseInt(c.meals?.chicken) || 0,
+            beef: parseInt(c.meals?.beef) || 0,
+            fish: parseInt(c.meals?.fish) || 0,
+            shrimp: parseInt(c.meals?.shrimp) || 0,
+            snacks: parseInt(c.meals?.snacks) || 0
+        },
+        weights: {
+            protein: parseInt(c.weights?.protein) || 0,
+            carb: parseInt(c.weights?.carb) || 0
+        }
+    }));
+}
+
+function computeMaxId(list) {
+    let maxNum = 0;
+    list.forEach(c => {
+        const num = parseInt(c.id, 10);
+        if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+        }
+    });
+    return maxNum;
+}
+
 async function loadDataFromCloud() {
     try {
-        const response = await fetch(GOOGLE_SHEETS_URL);
-        const data = await response.json();
-        
-        if (data && data.customers) {
-            customers = data.customers.map(c => ({
-                ...c,
-                id: String(c.id).padStart(5, '0') 
-            }));
-            
-            lastId = parseInt(data.lastId) || 0;
-            
+        // نحاول أولاً قراءة العقدة customers، وإذا كانت فارغة نقرأ الجذر (في حال رُفعت المصفوفة مباشرة في /)
+        let response = await fetch(CUSTOMERS_NODE_URL);
+        let data = await response.json();
+
+        if (!data) {
+            const rootRes = await fetch(ROOT_DB_URL);
+            const rootData = await rootRes.json();
+            if (rootData) {
+                data = rootData;
+            }
+        }
+
+        if (data) {
+            customers = normalizeCustomersArray(data);
+            const maxExistingId = computeMaxId(customers);
+            lastId = Math.max(parseInt(localStorage.getItem('mtd_last_id')) || 0, maxExistingId);
+
             localStorage.setItem('mtd_customers', JSON.stringify(customers));
             localStorage.setItem('mtd_last_id', lastId);
-            
+
             const regIdField = document.getElementById('reg-id');
             if (regIdField) regIdField.value = String(lastId + 1).padStart(5, '0');
-            console.log("تمت المزامنة واستعادة الأرقام التسلسلية بنجاح");
+            console.log("تمت المزامنة مع Firebase Realtime Database بنجاح");
         }
     } catch (error) {
-        console.log("العمل في وضع الاوفلاين أو جاري المزامنة...");
+        console.log("العمل في وضع الاوفلاين أو جاري المزامنة...", error);
     }
 }
 
@@ -34,13 +82,13 @@ async function saveData() {
     localStorage.setItem('mtd_last_id', lastId);
 
     try {
-        fetch(GOOGLE_SHEETS_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify({ customers: customers, lastId: lastId })
-        }).catch(e => console.log("فشلت المزامنة، سيتم المحاولة لاحقاً"));
+        await fetch(CUSTOMERS_NODE_URL, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(customers)
+        });
     } catch (error) {
-        console.error("خطأ في الاتصال بالسحابة");
+        console.log("فشلت المزامنة مع Firebase، سيتم المحاولة لاحقاً", error);
     }
 }
 
@@ -60,7 +108,7 @@ function nav(pageId) {
     const targetPage = document.getElementById('page-' + pageId);
     if (targetPage) targetPage.style.display = 'block';
 
-    if (event && event.target && event.target.tagName === 'BUTTON' && pageId !== 'renew-form') {
+    if (typeof event !== 'undefined' && event && event.target && event.target.tagName === 'BUTTON' && pageId !== 'renew-form') {
         event.target.classList.add('active');
     }
     
@@ -80,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- 3. Registration Logic (تسجيل عميل جديد + واتساب) ---
 const formRegister = document.getElementById('form-register');
 if (formRegister) {
-    formRegister.addEventListener('submit', function(e) {
+    formRegister.addEventListener('submit', async function(e) {
         e.preventDefault();
         
         const start = new Date();
@@ -111,7 +159,7 @@ if (formRegister) {
         };
 
         customers.push(newCustomer);
-        saveData();
+        await saveData();
         
         let waPhone = newCustomer.phone.trim();
         if (waPhone.startsWith('05')) {
@@ -155,8 +203,8 @@ function searchCustomer(context) {
     const found = customers.filter(c => {
         const formattedId = String(c.id).padStart(5, '0');
         return formattedId.includes(query) || 
-               c.name.toLowerCase().includes(query) || 
-               c.phone.includes(query);
+               String(c.name || '').toLowerCase().includes(query) || 
+               String(c.phone || '').includes(query);
     });
 
     if (found.length === 0) {
@@ -196,8 +244,9 @@ function searchCustomer(context) {
     });
 }
 
-function recordConsumption(id) {
+async function recordConsumption(id) {
     const c = customers.find(x => String(x.id).padStart(5, '0') === String(id));
+    if (!c) return;
     
     c.meals.chicken -= parseInt(document.getElementById(`con-ch-${id}`).value) || 0;
     c.meals.beef -= parseInt(document.getElementById(`con-be-${id}`).value) || 0;
@@ -211,7 +260,7 @@ function recordConsumption(id) {
     if(c.meals.shrimp < 0) c.meals.shrimp = 0;
     if(c.meals.snacks < 0) c.meals.snacks = 0;
 
-    saveData();
+    await saveData();
     alert('تم تسجيل الاستهلاك وخصم الوجبات بنجاح');
     searchCustomer('consume');
 }
@@ -219,6 +268,7 @@ function recordConsumption(id) {
 // --- 5. Full Page Renew Logic (صفحة التجديد الكاملة + واتساب) ---
 function openRenewForm(id) {
     const c = customers.find(x => String(x.id).padStart(5, '0') === String(id));
+    if (!c) return;
     
     document.getElementById('rnw-id').value = String(c.id).padStart(5, '0');
     document.getElementById('rnw-name').value = c.name;
@@ -239,7 +289,7 @@ function openRenewForm(id) {
 
 const formRenew = document.getElementById('form-renew');
 if (formRenew) {
-    formRenew.addEventListener('submit', function(e) {
+    formRenew.addEventListener('submit', async function(e) {
         e.preventDefault();
         
         const id = document.getElementById('rnw-id').value;
@@ -266,10 +316,9 @@ if (formRenew) {
         end.setDate(end.getDate() + duration);
         c.endDate = end.toISOString();
 
-        saveData();
+        await saveData();
 
-        // --- تجهيز رسالة الواتساب الخاصة بالتجديد ---
-        let waPhone = c.phone.trim();
+        let waPhone = String(c.phone || '').trim();
         if (waPhone.startsWith('05')) {
             waPhone = '966' + waPhone.substring(1);
         }
@@ -295,7 +344,6 @@ Https://maps.app.goo.gl/V9Bxgts76BFxKLVEA?g_st=ic
 
         const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMessage)}`;
         window.open(waUrl, '_blank'); 
-        // -------------------------------
 
         alert(`تم تجديد اشتراك العميل ${c.name} بنجاح! سيتم فتح الواتساب لإرسال التفاصيل.`);
         
@@ -305,10 +353,10 @@ Https://maps.app.goo.gl/V9Bxgts76BFxKLVEA?g_st=ic
     });
 }
 
-function deleteCustomer(id) {
+async function deleteCustomer(id) {
     if(confirm('هل أنت متأكد من حذف هذا العميل؟')) {
         customers = customers.filter(x => String(x.id).padStart(5, '0') !== String(id));
-        saveData();
+        await saveData();
         searchCustomer('renew');
     }
 }
@@ -376,13 +424,13 @@ function importData() {
     if (!file) return alert('يرجى اختيار ملف أولاً');
 
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = async function(e) {
         try {
             const data = JSON.parse(e.target.result);
             if(data.customers) {
-                customers = data.customers;
-                lastId = data.lastId || lastId;
-                saveData();
+                customers = normalizeCustomersArray(data.customers);
+                lastId = Math.max(parseInt(data.lastId) || 0, computeMaxId(customers));
+                await saveData();
                 alert('تم استيراد البيانات بنجاح!');
                 location.reload();
             }
