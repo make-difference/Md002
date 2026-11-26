@@ -6,6 +6,16 @@ const ROOT_DB_URL = `${FIREBASE_DB_URL}/.json`;
 let customers = JSON.parse(localStorage.getItem('mtd_customers')) || [];
 let lastId = parseInt(localStorage.getItem('mtd_last_id')) || 0;
 
+function pickField(obj, keys, fallback = '') {
+    if (!obj || typeof obj !== 'object') return fallback;
+    for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') {
+            return obj[k];
+        }
+    }
+    return fallback;
+}
+
 function normalizeCustomersArray(rawData) {
     let list = [];
     if (Array.isArray(rawData)) {
@@ -18,21 +28,41 @@ function normalizeCustomersArray(rawData) {
         }
     }
 
-    return list.map(c => ({
-        ...c,
-        id: String(c.id || '').padStart(5, '0'),
-        meals: {
-            chicken: parseInt(c.meals?.chicken) || 0,
-            beef: parseInt(c.meals?.beef) || 0,
-            fish: parseInt(c.meals?.fish) || 0,
-            shrimp: parseInt(c.meals?.shrimp) || 0,
-            snacks: parseInt(c.meals?.snacks) || 0
-        },
-        weights: {
-            protein: parseInt(c.weights?.protein) || 0,
-            carb: parseInt(c.weights?.carb) || 0
-        }
-    }));
+    return list.map((c, index) => {
+        const rawId = pickField(c, ['id', 'ID', 'Id', 'رقم العميل', 'الرقم', 'code', 'Code'], index + 1);
+        const rawName = pickField(c, ['name', 'Name', 'NAME', 'الاسم', 'اسم العميل', 'fullName', 'clientName'], '');
+        const rawPhone = pickField(c, ['phone', 'Phone', 'PHONE', 'mobile', 'Mobile', 'الجوال', 'رقم الجوال', 'whatsapp'], '');
+        const rawType = pickField(c, ['type', 'Type', 'نوع الاشتراك', 'النوع', 'plan'], '');
+        const rawStart = pickField(c, ['startDate', 'start_date', 'StartDate', 'تاريخ البداية', 'البداية'], new Date().toISOString());
+        const rawEnd = pickField(c, ['endDate', 'end_date', 'EndDate', 'تاريخ الانتهاء', 'النهاية'], new Date().toISOString());
+        const rawDuration = parseInt(pickField(c, ['duration', 'Duration', 'المدة', 'الأيام'], 0)) || 0;
+
+        const mealsSource = (c.meals && typeof c.meals === 'object') ? c.meals : c;
+        const weightsSource = (c.weights && typeof c.weights === 'object') ? c.weights : c;
+
+        return {
+            ...c,
+            id: String(rawId).padStart(5, '0'),
+            name: String(rawName).trim(),
+            phone: String(rawPhone).trim(),
+            type: String(rawType).trim(),
+            duration: rawDuration,
+            startDate: rawStart,
+            endDate: rawEnd,
+            status: c.status || 'active',
+            meals: {
+                chicken: parseInt(pickField(mealsSource, ['chicken', 'Chicken', 'دجاج'], 0)) || 0,
+                beef: parseInt(pickField(mealsSource, ['beef', 'Beef', 'لحم'], 0)) || 0,
+                fish: parseInt(pickField(mealsSource, ['fish', 'Fish', 'سمك'], 0)) || 0,
+                shrimp: parseInt(pickField(mealsSource, ['shrimp', 'Shrimp', 'روبيان', 'جمبري'], 0)) || 0,
+                snacks: parseInt(pickField(mealsSource, ['snacks', 'Snacks', 'سناكس', 'سناك'], 0)) || 0
+            },
+            weights: {
+                protein: parseInt(pickField(weightsSource, ['protein', 'Protein', 'بروتين'], 0)) || 0,
+                carb: parseInt(pickField(weightsSource, ['carb', 'carbs', 'Carb', 'Carbs', 'كارب'], 0)) || 0
+            }
+        };
+    });
 }
 
 function computeMaxId(list) {
@@ -48,7 +78,6 @@ function computeMaxId(list) {
 
 async function loadDataFromCloud() {
     try {
-        // نحاول أولاً قراءة العقدة customers، وإذا كانت فارغة نقرأ الجذر (في حال رُفعت المصفوفة مباشرة في /)
         let response = await fetch(CUSTOMERS_NODE_URL);
         let data = await response.json();
 
@@ -161,7 +190,7 @@ if (formRegister) {
         customers.push(newCustomer);
         await saveData();
         
-        let waPhone = newCustomer.phone.trim();
+        let waPhone = String(newCustomer.phone || '').trim();
         if (waPhone.startsWith('05')) {
             waPhone = '966' + waPhone.substring(1);
         }
@@ -196,15 +225,19 @@ Https://maps.app.goo.gl/V9Bxgts76BFxKLVEA?g_st=ic
 
 // --- 4. Search and Consume Logic (البحث والاستهلاك) ---
 function searchCustomer(context) {
-    const query = document.getElementById(`search-${context}`).value.toLowerCase();
+    const query = document.getElementById(`search-${context}`).value.trim().toLowerCase();
     const resultDiv = document.getElementById(`${context}-results`);
     resultDiv.innerHTML = '';
 
     const found = customers.filter(c => {
-        const formattedId = String(c.id).padStart(5, '0');
-        return formattedId.includes(query) || 
-               String(c.name || '').toLowerCase().includes(query) || 
-               String(c.phone || '').includes(query);
+        const formattedId = String(c.id || '').padStart(5, '0').toLowerCase();
+        const rawId = String(parseInt(c.id, 10) || '').toLowerCase();
+        const name = String(c.name || '').toLowerCase();
+        const phone = String(c.phone || '').toLowerCase();
+        return formattedId.includes(query) ||
+               (rawId && rawId.includes(query)) ||
+               name.includes(query) ||
+               phone.includes(query);
     });
 
     if (found.length === 0) {
@@ -217,9 +250,9 @@ function searchCustomer(context) {
         const daysLeft = Math.ceil((new Date(c.endDate) - new Date()) / (1000 * 60 * 60 * 24));
         
         let html = `<div class="card">
-            <h3>${c.name} (#${displayId})</h3>
-            <p>الجوال: ${c.phone}</p>
-            <p>النوع: ${c.type}</p>
+            <h3>${c.name || 'بدون اسم'} (#${displayId})</h3>
+            <p>الجوال: ${c.phone || '-'}</p>
+            <p>النوع: ${c.type || '-'}</p>
             <p>الأيام المتبقية: ${daysLeft > 0 ? daysLeft : 0}</p>
             <hr>`;
 
