@@ -16,6 +16,55 @@ function pickField(obj, keys, fallback = '') {
     return fallback;
 }
 
+function parseFlexibleDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+        return isNaN(value.getTime()) ? null : value;
+    }
+    const str = String(value).trim();
+    if (!str) return null;
+
+    let d = new Date(str);
+    if (!isNaN(d.getTime())) return d;
+
+    const slashMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (slashMatch) {
+        const day = parseInt(slashMatch[1], 10);
+        const month = parseInt(slashMatch[2], 10) - 1;
+        const year = parseInt(slashMatch[3], 10);
+        d = new Date(year, month, day);
+        if (!isNaN(d.getTime())) return d;
+    }
+
+    return null;
+}
+
+function getRemainingDays(customer) {
+    if (!customer || typeof customer !== 'object') return null;
+
+    let endObj = parseFlexibleDate(
+        pickField(customer, ['endDate', 'end_date', 'EndDate', 'expiryDate', 'تاريخ الانتهاء', 'تاريخ النهاية', 'النهاية'], '')
+    );
+
+    if (!endObj) {
+        const startObj = parseFlexibleDate(
+            pickField(customer, ['startDate', 'start_date', 'StartDate', 'تاريخ البداية', 'البداية'], '')
+        );
+        const durationDays = parseInt(pickField(customer, ['duration', 'Duration', 'المدة', 'الأيام'], 0), 10) || 0;
+        if (startObj && durationDays > 0) {
+            endObj = new Date(startObj);
+            endObj.setDate(endObj.getDate() + durationDays);
+        }
+    }
+
+    if (!endObj) return null;
+
+    const now = new Date();
+    const diffMs = endObj.getTime() - now.getTime();
+    const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    return days > 0 ? days : 0;
+}
+
 function normalizeCustomersArray(rawData) {
     let list = [];
     if (Array.isArray(rawData)) {
@@ -34,8 +83,8 @@ function normalizeCustomersArray(rawData) {
         const rawPhone = pickField(c, ['phone', 'Phone', 'PHONE', 'mobile', 'Mobile', 'الجوال', 'رقم الجوال', 'whatsapp'], '');
         const rawType = pickField(c, ['type', 'Type', 'نوع الاشتراك', 'النوع', 'plan'], '');
         const rawStart = pickField(c, ['startDate', 'start_date', 'StartDate', 'تاريخ البداية', 'البداية'], new Date().toISOString());
-        const rawEnd = pickField(c, ['endDate', 'end_date', 'EndDate', 'تاريخ الانتهاء', 'النهاية'], new Date().toISOString());
-        const rawDuration = parseInt(pickField(c, ['duration', 'Duration', 'المدة', 'الأيام'], 0)) || 0;
+        const rawEnd = pickField(c, ['endDate', 'end_date', 'EndDate', 'expiryDate', 'تاريخ الانتهاء', 'تاريخ النهاية', 'النهاية'], new Date().toISOString());
+        const rawDuration = parseInt(pickField(c, ['duration', 'Duration', 'المدة', 'الأيام'], 0), 10) || 0;
 
         const mealsSource = (c.meals && typeof c.meals === 'object') ? c.meals : c;
         const weightsSource = (c.weights && typeof c.weights === 'object') ? c.weights : c;
@@ -247,13 +296,14 @@ function searchCustomer(context) {
 
     found.forEach(c => {
         const displayId = String(c.id).padStart(5, '0');
-        const daysLeft = Math.ceil((new Date(c.endDate) - new Date()) / (1000 * 60 * 60 * 24));
+        const computedDays = getRemainingDays(c);
+        const daysText = computedDays === null ? 'غير محدد' : `${computedDays} يوم`;
         
         let html = `<div class="card">
             <h3>${c.name || 'بدون اسم'} (#${displayId})</h3>
             <p>الجوال: ${c.phone || '-'}</p>
             <p>النوع: ${c.type || '-'}</p>
-            <p>الأيام المتبقية: ${daysLeft > 0 ? daysLeft : 0}</p>
+            <p>الأيام المتبقية: ${daysText}</p>
             <hr>`;
 
         if (context === 'renew') {
@@ -403,9 +453,11 @@ function loadTracking(type) {
     const now = new Date();
 
     currentTrackingView = customers.filter(c => {
-        const daysLeft = Math.ceil((new Date(c.endDate) - now) / (1000 * 60 * 60 * 24));
+        const remaining = getRemainingDays(c);
+        const daysLeft = remaining === null ? 9999 : remaining;
         const totalMeals = (c.meals.chicken || 0) + (c.meals.beef || 0) + (c.meals.fish || 0) + (c.meals.shrimp || 0) + (c.meals.snacks || 0);
-        const hoursSinceStart = Math.abs(now - new Date(c.startDate)) / 36e5;
+        const startObj = parseFlexibleDate(c.startDate);
+        const hoursSinceStart = startObj ? Math.abs(now - startObj) / 36e5 : 9999;
 
         if (type === 'new') return hoursSinceStart <= 24;
         if (type === 'expiring') return (daysLeft <= 3 && daysLeft > 0) || (totalMeals <= 3 && totalMeals > 0);
@@ -419,9 +471,11 @@ function loadTracking(type) {
 
     currentTrackingView.forEach(c => {
         const displayId = String(c.id).padStart(5, '0');
+        const endObj = parseFlexibleDate(c.endDate);
+        const endText = endObj ? endObj.toLocaleDateString('ar-SA') : 'غير محدد';
         content.innerHTML += `<div class="card">
             <strong>${c.name} (#${displayId})</strong> - ${c.phone} <br>
-            ينتهي في: ${new Date(c.endDate).toLocaleDateString('ar-SA')}
+            ينتهي في: ${endText}
         </div>`;
     });
 }
@@ -432,7 +486,9 @@ function exportTracking() {
     let csv = 'ID,Name,Phone,Type,End Date\n';
     currentTrackingView.forEach(c => {
         const displayId = String(c.id).padStart(5, '0');
-        csv += `${displayId},${c.name},${c.phone},${c.type},${new Date(c.endDate).toLocaleDateString()}\n`;
+        const endObj = parseFlexibleDate(c.endDate);
+        const endText = endObj ? endObj.toLocaleDateString() : '';
+        csv += `${displayId},${c.name},${c.phone},${c.type},${endText}\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
