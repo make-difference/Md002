@@ -1,0 +1,63 @@
+:root {
+    --primary: #FFD700; /* اللون الأصفر الأساسي */
+    --primary-dark: #E6C200; /* أصفر غامق عند الضغط */
+    --bg-light: #000000; /* خلفية سوداء بالكامل */
+    --card-bg: #111111; /* أسود رمادي للبطاقات والنوافذ */
+    --text-main: #FFFFFF; /* أبيض للنصوص عشان تكون واضحة */
+    --text-muted: #AAAAAA; /* رمادي فاتح للنصوص الثانوية */
+    --danger: #FF4444; /* أحمر لزر الحذف */
+    --border: #333333; /* حدود رمادية داكنة */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+body { background-color: var(--bg-light); color: var(--text-main); }
+
+.app-container { display: flex; flex-direction: column; min-height: 100vh; }
+
+.navbar { background: var(--card-bg); padding: 1.5rem 1rem; box-shadow: 0 2px 10px rgba(255,215,0,0.1); display: flex; flex-direction: column; gap: 1.5rem; border-bottom: 1px solid var(--border); }
+.navbar .brand { color: var(--primary); text-align: center; font-weight: 900; font-size: 1.3rem; line-height: 1.4; text-shadow: 0 0 10px rgba(255,215,0,0.3); }
+
+.nav-links { list-style: none; display: flex; overflow-x: auto; gap: 0.5rem; }
+.nav-links button { border: none; background: transparent; padding: 0.75rem 1rem; cursor: pointer; white-space: nowrap; border-radius: 5px; color: var(--text-muted); font-weight: bold; transition: 0.3s; font-size: 1rem; display: flex; align-items: center; gap: 5px; }
+.nav-links button:hover { color: var(--primary); }
+.nav-links button.active { background: var(--primary); color: #000000; } /* الزر النشط أصفر والكتابة سوداء */
+
+.content { padding: 1rem; flex: 1; }
+.page { background: var(--card-bg); padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.5); border: 1px solid var(--border); }
+
+h2, h3 { color: var(--primary); margin-bottom: 1rem; }
+
+.input-group { margin-bottom: 1rem; display: flex; flex-direction: column; }
+.input-group label { margin-bottom: 0.5rem; font-size: 0.95rem; color: var(--primary); font-weight: bold; }
+.input-group input { padding: 0.75rem; border: 1px solid var(--border); border-radius: 5px; outline: none; background: #000000; color: #FFFFFF; font-weight: bold; }
+.input-group input:focus { border-color: var(--primary); box-shadow: 0 0 5px rgba(255,215,0,0.4); }
+.input-group input:disabled { color: #888888; background: #1a1a1a; border-color: #222; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+button { padding: 0.75rem 1.5rem; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; font-size: 1rem; }
+.btn-primary { background: var(--primary); color: #000000; width: 100%; box-shadow: 0 4px 6px rgba(255,215,0,0.2); }
+.btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
+.btn-secondary { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+.btn-secondary:hover { background: var(--primary); color: #000000; }
+.btn-danger { background: var(--danger); color: white; }
+
+.search-box { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.search-box input { flex: 1; padding: 0.75rem; border: 1px solid var(--border); border-radius: 5px; background: #000000; color: #FFFFFF; }
+
+.card { border: 1px solid var(--border); padding: 1rem; border-radius: 5px; margin-bottom: 1rem; background: #050505; }
+.card p { color: var(--text-muted); margin-bottom: 5px; }
+.card strong { color: var(--primary); font-size: 1.1rem; }
+.card hr { border-color: var(--border); margin: 10px 0; }
+
+.tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.tabs button { flex: 1; background: #000000; color: var(--text-muted); border: 1px solid var(--border); }
+.tabs button.active { background: var(--primary); color: #000000; border-color: var(--primary); }
+
+/* إعدادات الشاشات الكبيرة (الكمبيوتر والآيباد) */
+@media (min-width: 768px) {
+    .app-container { flex-direction: row; }
+    .navbar { width: 280px; min-height: 100vh; border-bottom: none; border-left: 1px solid var(--border); }
+    .nav-links { flex-direction: column; }
+}

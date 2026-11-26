@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Make the Difference - Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#FFD700">
+</head>
+<body>
+    <div class="app-container">
+        <nav class="navbar">
+            <h2 class="brand" style="direction: ltr;">👋 WELCOME TO<br>MAKE DIFFERENCE</h2>
+            
+            <ul class="nav-links">
+                <li><button onclick="nav('register')" class="active">📝 تسجيل جديد</button></li>
+                <li><button onclick="nav('renew')">🔄 تجديد الاشتراك</button></li>
+                <li><button onclick="nav('consume')">🍽️ استهلاك الوجبات</button></li>
+                <li><button onclick="nav('tracking')">📊 متابعة الاشتراكات</button></li>
+                <li><button onclick="nav('settings')">⚙️ إدارة البيانات</button></li>
+            </ul>
+        </nav>
+
+        <main class="content">
+            
+            <section id="page-register" class="page active">
+                <h2>تسجيل عميل جديد</h2>
+                <form id="form-register">
+                    <div class="input-group">
+                        <label>رقم العميل (تلقائي)</label>
+                        <input type="text" id="reg-id" readonly disabled>
+                    </div>
+                    <div class="input-group"><label>اسم العميل</label><input type="text" id="reg-name" required></div>
+                    <div class="input-group"><label>رقم الجوال</label><input type="tel" id="reg-phone" placeholder="05XXXXXXXX" required></div>
+                    <div class="input-group"><label>نوع الاشتراك</label><input type="text" id="reg-type" required></div>
+                    
+                    <h3>توزيع الوجبات</h3>
+                    <div class="grid-2">
+                        <div class="input-group"><label>دجاج</label><input type="number" id="reg-chicken" min="0" value="0"></div>
+                        <div class="input-group"><label>لحم</label><input type="number" id="reg-beef" min="0" value="0"></div>
+                        <div class="input-group"><label>سمك</label><input type="number" id="reg-fish" min="0" value="0"></div>
+                        <div class="input-group"><label>روبيان</label><input type="number" id="reg-shrimp" min="0" value="0"></div>
+                        <div class="input-group"><label>سناكس</label><input type="number" id="reg-snacks" min="0" value="0"></div>
+                    </div>
+
+                    <h3>الماكروز والمدة</h3>
+                    <div class="grid-2">
+                        <div class="input-group"><label>وزن البروتين (جرام)</label><input type="number" id="reg-protein" min="0" required></div>
+                        <div class="input-group"><label>وزن الكارب (جرام)</label><input type="number" id="reg-carb" min="0" required></div>
+                        <div class="input-group"><label>مدة الاشتراك (أيام)</label><input type="number" id="reg-duration" min="1" required></div>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary">حفظ العميل وإرسال رسالة الواتساب</button>
+                </form>
+            </section>
+
+            <section id="page-renew" class="page" style="display:none;">
+                <h2>بحث وتجديد الاشتراك</h2>
+                <div class="search-box">
+                    <input type="text" id="search-renew" placeholder="ابحث بالاسم، الرقم، أو الكود...">
+                    <button onclick="searchCustomer('renew')" class="btn-secondary">بحث</button>
+                </div>
+                <div id="renew-results"></div>
+            </section>
+
+            <section id="page-renew-form" class="page" style="display:none;">
+                <h2>تجديد اشتراك العميل</h2>
+                <form id="form-renew">
+                    <div class="input-group">
+                        <label>رقم العميل</label>
+                        <input type="text" id="rnw-id" readonly disabled>
+                    </div>
+                    <div class="input-group"><label>اسم العميل</label><input type="text" id="rnw-name" readonly disabled></div>
+                    <div class="input-group"><label>نوع الاشتراك</label><input type="text" id="rnw-type" required></div>
+                    
+                    <h3>تحديث الوجبات للدورة الجديدة</h3>
+                    <div class="grid-2">
+                        <div class="input-group"><label>دجاج</label><input type="number" id="rnw-chicken" min="0" value="0"></div>
+                        <div class="input-group"><label>لحم</label><input type="number" id="rnw-beef" min="0" value="0"></div>
+                        <div class="input-group"><label>سمك</label><input type="number" id="rnw-fish" min="0" value="0"></div>
+                        <div class="input-group"><label>روبيان</label><input type="number" id="rnw-shrimp" min="0" value="0"></div>
+                        <div class="input-group"><label>سناكس</label><input type="number" id="rnw-snacks" min="0" value="0"></div>
+                    </div>
+
+                    <h3>الماكروز والمدة الجديدة</h3>
+                    <div class="grid-2">
+                        <div class="input-group"><label>وزن البروتين (جرام)</label><input type="number" id="rnw-protein" min="0" required></div>
+                        <div class="input-group"><label>وزن الكارب (جرام)</label><input type="number" id="rnw-carb" min="0" required></div>
+                        <div class="input-group"><label>مدة الاشتراك (أيام)</label><input type="number" id="rnw-duration" min="1" required></div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button type="submit" class="btn-primary" style="flex: 2;">اعتماد التجديد وبدء دورة جديدة</button>
+                        <button type="button" class="btn-danger" style="flex: 1;" onclick="nav('renew')">إلغاء والرجوع</button>
+                    </div>
+                </form>
+            </section>
+
+            <section id="page-consume" class="page" style="display:none;">
+                <h2>استهلاك الوجبات اليومية</h2>
+                <div class="search-box">
+                    <input type="text" id="search-consume" placeholder="ابحث بالاسم، الرقم، أو الكود...">
+                    <button onclick="searchCustomer('consume')" class="btn-secondary">بحث</button>
+                </div>
+                <div id="consume-results"></div>
+            </section>
+
+            <section id="page-tracking" class="page" style="display:none;">
+                <h2>متابعة الاشتراكات</h2>
+                <div class="tabs">
+                    <button onclick="loadTracking('new')">جديد</button>
+                    <button onclick="loadTracking('expiring')">قارب على الانتهاء</button>
+                    <button onclick="loadTracking('expired')">منتهي</button>
+                </div>
+                <div id="tracking-content"></div>
+                <button onclick="exportTracking()" class="btn-primary" style="margin-top: 1rem;">تصدير القائمة المعروضة (CSV)</button>
+            </section>
+
+            <section id="page-settings" class="page" style="display:none;">
+                <h2>إدارة البيانات</h2>
+                <div class="card">
+                    <h3>تصدير البيانات</h3>
+                    <p>قم بتحميل نسخة احتياطية من جميع بيانات العملاء.</p>
+                    <button onclick="exportAllData()" class="btn-primary">تصدير جميع البيانات (JSON)</button>
+                </div>
+                <div class="card" style="margin-top: 1rem;">
+                    <h3>استيراد البيانات</h3>
+                    <input type="file" id="import-file" accept=".json">
+                    <button onclick="importData()" class="btn-secondary" style="margin-top: 10px;">استيراد الملف</button>
+                </div>
+            </section>
+
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
