@@ -125,6 +125,40 @@ function computeMaxId(list) {
     return maxNum;
 }
 
+function saveLocalCache() {
+    localStorage.setItem('mtd_customers', JSON.stringify(customers));
+    localStorage.setItem('mtd_last_id', lastId);
+}
+
+async function syncAllToCloud() {
+    saveLocalCache();
+    try {
+        await fetch(CUSTOMERS_NODE_URL, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(customers)
+        });
+    } catch (error) {
+        console.log("فشلت المزامنة مع Firebase، سيتم المحاولة لاحقاً", error);
+    }
+}
+
+async function syncCustomerAtIndex(index, partialData = null) {
+    saveLocalCache();
+    if (index < 0 || !customers[index]) return;
+
+    const payload = partialData || customers[index];
+    try {
+        await fetch(`${FIREBASE_DB_URL}/customers/${index}.json`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } catch (error) {
+        console.log("فشلت مزامنة العميل مع Firebase، سيتم المحاولة لاحقاً", error);
+    }
+}
+
 async function loadDataFromCloud() {
     try {
         let response = await fetch(CUSTOMERS_NODE_URL);
@@ -143,8 +177,7 @@ async function loadDataFromCloud() {
             const maxExistingId = computeMaxId(customers);
             lastId = Math.max(parseInt(localStorage.getItem('mtd_last_id')) || 0, maxExistingId);
 
-            localStorage.setItem('mtd_customers', JSON.stringify(customers));
-            localStorage.setItem('mtd_last_id', lastId);
+            saveLocalCache();
 
             const regIdField = document.getElementById('reg-id');
             if (regIdField) regIdField.value = String(lastId + 1).padStart(5, '0');
@@ -152,21 +185,6 @@ async function loadDataFromCloud() {
         }
     } catch (error) {
         console.log("العمل في وضع الاوفلاين أو جاري المزامنة...", error);
-    }
-}
-
-async function saveData() {
-    localStorage.setItem('mtd_customers', JSON.stringify(customers));
-    localStorage.setItem('mtd_last_id', lastId);
-
-    try {
-        await fetch(CUSTOMERS_NODE_URL, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(customers)
-        });
-    } catch (error) {
-        console.log("فشلت المزامنة مع Firebase، سيتم المحاولة لاحقاً", error);
     }
 }
 
@@ -206,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- 3. Registration Logic (تسجيل عميل جديد + واتساب) ---
 const formRegister = document.getElementById('form-register');
 if (formRegister) {
-    formRegister.addEventListener('submit', async function(e) {
+    formRegister.addEventListener('submit', function(e) {
         e.preventDefault();
         
         const start = new Date();
@@ -236,8 +254,10 @@ if (formRegister) {
             status: 'active'
         };
 
+        const newIndex = customers.length;
         customers.push(newCustomer);
-        await saveData();
+        saveLocalCache();
+        syncCustomerAtIndex(newIndex);
         
         let waPhone = String(newCustomer.phone || '').trim();
         if (waPhone.startsWith('05')) {
@@ -327,25 +347,22 @@ function searchCustomer(context) {
     });
 }
 
-async function recordConsumption(id) {
-    const c = customers.find(x => String(x.id).padStart(5, '0') === String(id));
-    if (!c) return;
-    
-    c.meals.chicken -= parseInt(document.getElementById(`con-ch-${id}`).value) || 0;
-    c.meals.beef -= parseInt(document.getElementById(`con-be-${id}`).value) || 0;
-    c.meals.fish -= parseInt(document.getElementById(`con-fi-${id}`).value) || 0;
-    c.meals.shrimp -= parseInt(document.getElementById(`con-sh-${id}`).value) || 0;
-    c.meals.snacks -= parseInt(document.getElementById(`con-sn-${id}`).value) || 0;
-    
-    if(c.meals.chicken < 0) c.meals.chicken = 0;
-    if(c.meals.beef < 0) c.meals.beef = 0;
-    if(c.meals.fish < 0) c.meals.fish = 0;
-    if(c.meals.shrimp < 0) c.meals.shrimp = 0;
-    if(c.meals.snacks < 0) c.meals.snacks = 0;
+function recordConsumption(id) {
+    const index = customers.findIndex(x => String(x.id).padStart(5, '0') === String(id));
+    if (index === -1) return;
 
-    await saveData();
+    const c = customers[index];
+    
+    c.meals.chicken = Math.max(0, (c.meals.chicken || 0) - (parseInt(document.getElementById(`con-ch-${id}`).value) || 0));
+    c.meals.beef = Math.max(0, (c.meals.beef || 0) - (parseInt(document.getElementById(`con-be-${id}`).value) || 0));
+    c.meals.fish = Math.max(0, (c.meals.fish || 0) - (parseInt(document.getElementById(`con-fi-${id}`).value) || 0));
+    c.meals.shrimp = Math.max(0, (c.meals.shrimp || 0) - (parseInt(document.getElementById(`con-sh-${id}`).value) || 0));
+    c.meals.snacks = Math.max(0, (c.meals.snacks || 0) - (parseInt(document.getElementById(`con-sn-${id}`).value) || 0));
+
+    saveLocalCache();
     alert('تم تسجيل الاستهلاك وخصم الوجبات بنجاح');
     searchCustomer('consume');
+    syncCustomerAtIndex(index, { meals: c.meals });
 }
 
 // --- 5. Full Page Renew Logic (صفحة التجديد الكاملة + واتساب) ---
@@ -372,13 +389,14 @@ function openRenewForm(id) {
 
 const formRenew = document.getElementById('form-renew');
 if (formRenew) {
-    formRenew.addEventListener('submit', async function(e) {
+    formRenew.addEventListener('submit', function(e) {
         e.preventDefault();
         
         const id = document.getElementById('rnw-id').value;
-        const c = customers.find(x => String(x.id).padStart(5, '0') === String(id));
-        if (!c) return alert('خطأ: لم يتم العثور على العميل');
+        const index = customers.findIndex(x => String(x.id).padStart(5, '0') === String(id));
+        if (index === -1) return alert('خطأ: لم يتم العثور على العميل');
 
+        const c = customers[index];
         const duration = parseInt(document.getElementById('rnw-duration').value);
 
         c.type = document.getElementById('rnw-type').value;
@@ -399,7 +417,8 @@ if (formRenew) {
         end.setDate(end.getDate() + duration);
         c.endDate = end.toISOString();
 
-        await saveData();
+        saveLocalCache();
+        syncCustomerAtIndex(index);
 
         let waPhone = String(c.phone || '').trim();
         if (waPhone.startsWith('05')) {
@@ -436,11 +455,12 @@ Https://maps.app.goo.gl/V9Bxgts76BFxKLVEA?g_st=ic
     });
 }
 
-async function deleteCustomer(id) {
+function deleteCustomer(id) {
     if(confirm('هل أنت متأكد من حذف هذا العميل؟')) {
         customers = customers.filter(x => String(x.id).padStart(5, '0') !== String(id));
-        await saveData();
+        saveLocalCache();
         searchCustomer('renew');
+        syncAllToCloud();
     }
 }
 
@@ -519,7 +539,7 @@ function importData() {
             if(data.customers) {
                 customers = normalizeCustomersArray(data.customers);
                 lastId = Math.max(parseInt(data.lastId) || 0, computeMaxId(customers));
-                await saveData();
+                await syncAllToCloud();
                 alert('تم استيراد البيانات بنجاح!');
                 location.reload();
             }
